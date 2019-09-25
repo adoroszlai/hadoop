@@ -36,16 +36,16 @@ docker run -p 9878:9878 -p 9876:9876 apache/ozone
 This command will pull down the ozone image from docker hub and start all
 ozone services in a single container. <br>
 This container will run the required metadata servers (Ozone Manager, Storage
-Container Manager) one data node  and the S3 compatible REST server
+Container Manager), one data node, and the S3 compatible REST server
 (S3 Gateway).
 
 # Local multi-container cluster
 
-If you would like to use a more realistic pseudo-cluster where each components
-run in own containers, you can start it with a docker-compose file.
+If you would like to use a more realistic pseudo-cluster where each component
+runs in its own container, you can start it with a docker-compose file.
 
-We have shipped a docker-compose and an enviorment file as part of the
-container image  that is uploaded to docker hub.
+We have shipped a docker-compose and an environment file as part of the
+container image that is uploaded to docker hub.
 
 The following commands can be used to extract these files from the image in the docker hub.
 ```bash
@@ -62,7 +62,7 @@ docker-compose up -d
 If you need multiple datanodes, we can just scale it up:
 
 ```bash
- docker-compose scale datanode=3
+docker-compose scale datanode=3
  ```
 # Running S3 Clients
 
