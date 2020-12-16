@@ -32,9 +32,9 @@ ENV PATH $PATH:/opt/hadoop/bin
 RUN groupadd --gid 1000 hadoop
 RUN useradd --uid 1000 hadoop --gid 100 --home /opt/hadoop
 RUN echo "hadoop ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-RUN chown hadoop /opt
 ADD scripts /opt/
 ADD scripts/krb5.conf /etc/
+RUN chown hadoop /opt && chmod -R go+rX /opt
 RUN yum install -y krb5-workstation
 RUN mkdir -p /etc/hadoop && mkdir -p /var/log/hadoop && chmod 1777 /etc/hadoop && chmod 1777 /var/log/hadoop
 ENV HADOOP_LOG_DIR=/var/log/hadoop
