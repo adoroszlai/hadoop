@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM centos
+FROM centos:7
 RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 RUN yum install -y sudo python2-pip wget nmap-ncat jq java-1.8.0-openjdk
 RUN pip install robotframework
