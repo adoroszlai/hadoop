@@ -16,8 +16,8 @@
 
 ARG JAVA_VERSION=11
 
-# Ubuntu 22.04 LTS
-FROM eclipse-temurin:${JAVA_VERSION}-jammy
+# Ubuntu 24.04 LTS
+FROM eclipse-temurin:${JAVA_VERSION}-noble
 
 RUN apt update -q \
     && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
