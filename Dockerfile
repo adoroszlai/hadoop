@@ -77,7 +77,7 @@ RUN set -eux; \
 RUN mkdir -p /etc/security/keytabs \
     && chmod -R a+wr /etc/security/keytabs
 
-RUN useradd --uid 1000 hadoop --gid 100 --home /opt/hadoop \
+RUN useradd hadoop --gid users --home /opt/hadoop \
     && mkdir -p /opt/hadoop \
     && chown hadoop:users /opt/hadoop \
     && echo "hadoop ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
