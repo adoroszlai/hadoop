@@ -30,10 +30,6 @@ RUN apt update -q \
       sudo \
     && apt clean
 
-# Robot Framework for testing
-RUN pipx install robotframework==6.1.1 \
-    && rm -fr ~/.cache/pip
-
 #dumb init for proper init handling
 RUN set -eux; \
     ARCH="$(arch)"; \
@@ -96,4 +92,9 @@ COPY --chmod=644 krb5.conf /etc/
 
 WORKDIR /opt/hadoop
 USER hadoop
+
+# Robot Framework for testing
+RUN pipx install robotframework==6.1.1 \
+    && rm -fr ~/.cache/pipx
+
 ENTRYPOINT ["/usr/local/bin/dumb-init", "--", "/opt/starter.sh"]
