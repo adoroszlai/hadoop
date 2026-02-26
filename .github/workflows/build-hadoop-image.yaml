@@ -75,6 +75,7 @@ jobs:
       - name: Debug
         run: |
           echo "Docker Hub user: $DOCKERHUB_USER"
+          echo "${{ toJSON(env) }}"
 
       - name: Login to Docker Hub
         if: ${{ env.DOCKERHUB_USER != '' && github.event_name != 'pull_request' }}
