@@ -72,6 +72,10 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Debug
+        run: |
+          echo "Docker Hub user: $DOCKERHUB_USER"
+
       - name: Login to Docker Hub
         if: ${{ env.DOCKERHUB_USER != '' && github.event_name != 'pull_request' }}
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
