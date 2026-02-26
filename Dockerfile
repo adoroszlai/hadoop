@@ -24,13 +24,14 @@ RUN apt update -q \
       jq \
       krb5-user \
       ncat \
+      pipx \
       python3-pip \
       python-is-python3 \
       sudo \
     && apt clean
 
 # Robot Framework for testing
-RUN pip install robotframework==6.1.1 \
+RUN pipx install robotframework==6.1.1 \
     && rm -fr ~/.cache/pip
 
 #dumb init for proper init handling
