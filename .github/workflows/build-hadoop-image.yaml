@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       image-id: ${{ steps.meta.outputs.tags }}
     steps:
