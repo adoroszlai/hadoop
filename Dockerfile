@@ -14,13 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG JAVA_VERSION=17
+ARG JAVA_VERSION=25
 
 # Ubuntu 24.04 LTS
 FROM eclipse-temurin:${JAVA_VERSION}-noble
 
 RUN apt update -q \
     && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+      curl \
       jq \
       krb5-user \
       ncat \
