@@ -70,6 +70,7 @@ env:
     -Drequire.valgrind
     -Dmaven.test.failure.ignore=false
     -Dsurefire.rerunFailingTestsCount=2
+  MVNW_VERBOSE: true
 
 jobs:
   # TODO: use common composite actions in .github/actions/
