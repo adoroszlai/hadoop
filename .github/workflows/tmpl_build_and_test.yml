@@ -179,7 +179,9 @@ jobs:
           check-latest: false
       - name: Build
         shell: bash
-        run: ./mvnw --show-version $MAVEN_ARGS -Duser.home=$HOME clean install -DskipTests -am -pl :hadoop-project
+        run: |
+          export MAVEN_USER_HOME=$HOME
+          ./mvnw --show-version $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
       - name: Debug HOME
         shell: bash
         run: |
