@@ -177,29 +177,9 @@ jobs:
           java-version: ${{ inputs.java }}
           cache: 'maven'
           check-latest: false
-      - name: Debug
-        shell: bash
-        run: |
-          set +e
-          id
-          ./mvnw -V -N help:evaluate -Dexpression=user.home
-          env
-          exit 0
-      - name: Debug HOME
-        shell: bash
-        run: |
-          set +e
-          find $HOME/.m2 | sort
-          exit 0
-      - name: Debug /home/runner
-        shell: bash
-        run: |
-          set +e
-          find /home/runner/.m2 | sort
-          exit 0
       - name: Build
         shell: bash
-        run: ./mvnw $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
+        run: ./mvnw --show-version $MAVEN_ARGS -Duser.home=$HOME clean install -DskipTests -am -pl :hadoop-project
       - name: Debug HOME
         shell: bash
         run: |
@@ -211,6 +191,12 @@ jobs:
         run: |
           set +e
           find /home/runner/.m2 | sort
+          exit 0
+      - name: Remove Hadoop artifacts from Maven cache
+        shell: bash
+        run: |
+          set +e
+          rm -fr $HOME/.m2/repository/org/apache/hadoop
           exit 0
   build-and-test:
     if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
