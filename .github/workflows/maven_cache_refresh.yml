@@ -36,7 +36,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MAVEN_ARGS: --batch-mode --show-version
+  MAVEN_ARGS:
+    --batch-mode
+    --no-transfer-progress
+    --show-version
+    -Dmaven.repo.local=${{ github.workspace }}/.m2/repository
+  MAVEN_USER_HOME: ${{ github.workspace }}/.m2
   MVNW_VERBOSE: true
 
 jobs:
@@ -54,20 +59,20 @@ jobs:
           distribution: zulu
           java-version: 17
           check-latest: false
+          settings-path: ${{ env.MAVEN_USER_HOME }}
 
       - name: Lookup Maven repository
         id: lookup-repo
         uses: actions/cache/restore@v6
         with:
-          path: |
-            ~/.m2/repository
+          path: ${{ env.MAVEN_USER_HOME }}/repository
           key: maven-repo-${{ hashFiles('**/pom.xml') }}
 
       - name: Lookup Maven wrapper
         id: lookup-wrapper
         uses: actions/cache/restore@v6
         with:
-          path: ~/.m2/wrapper
+          path: ${{ env.MAVEN_USER_HOME }}/wrapper
           key: maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
 
       - name: Fetch plugin dependencies
@@ -84,12 +89,12 @@ jobs:
         if: steps.lookup-wrapper.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: ~/.m2/wrapper
+          path: ${{ env.MAVEN_USER_HOME }}/wrapper
           key: ${{ steps.lookup-wrapper.outputs.cache-primary-key }}
 
       - name: Save Maven repository
         if: steps.lookup-repo.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: ~/.m2/repository
+          path: ${{ env.MAVEN_USER_HOME }}/repository
           key: ${{ steps.lookup-repo.outputs.cache-primary-key }}
