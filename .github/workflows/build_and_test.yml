@@ -35,13 +35,46 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Seed the cache before fanning out to 3 jobs.
+  # Also, `build-and-test` -pl ... cannot populate a full cache.
+  seed-cache:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 17
+          cache: 'maven'
+          cache-jdk: false
+          check-latest: false
+      - name: Seed the cache
+        shell: bash
+        run: |
+          # Using real build instead of dependency:go-offline because that fails at
+          #   hadoop-cloud-storage-project/hadoop-bos/pom.xml
+          # with
+          #   The following artifacts could not be resolved: jdk.tools:jdk.tools:jar:1.6
+          # probably due to
+          #   https://github.com/apache/maven-dependency-plugin/issues/1803
+          ./mvnw dependency:resolve-plugins -Dtest=void -DskipShade --fail-never verify
+        env:
+          MVNW_VERBOSE: true
+
   default:
+    needs:
+      - seed-cache
     permissions:
       packages: write
     name: Run
     uses: ./.github/workflows/tmpl_build_and_test.yml
 
   rockylinux-8-java21-build-only:
+    needs:
+      - seed-cache
     permissions:
       packages: write
     name: Run
@@ -52,6 +85,8 @@ jobs:
       jobs: '[ "build-only" ]'
 
   debian-13-java25-build-only:
+    needs:
+      - seed-cache
     permissions:
       packages: write
     name: Run
