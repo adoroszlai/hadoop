@@ -40,6 +40,9 @@ jobs:
       packages: write
     name: Run
     uses: ./.github/workflows/tmpl_build_and_test.yml
+    with:
+      java: 17
+      jobs: '[ "build-only" ]'
 
   rockylinux-8-java21-build-only:
     permissions:

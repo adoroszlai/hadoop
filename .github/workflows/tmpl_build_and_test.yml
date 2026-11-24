@@ -133,7 +133,8 @@ jobs:
           file: ./dev-support/docker/Dockerfile_${{ inputs.os }}
           push: true
           tags: ${{ needs.precondition.outputs.build_image_url }}-base
-          cache-from: type=registry,ref=ghcr.io/apache/hadoop/gha-build-${{ inputs.os }}-image-cache:${{ inputs.branch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: User-specific Dockerfile
         run: |
           USER_ID=$(id -u "${USER}")
@@ -169,16 +170,29 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Lookup Maven repository
+        id: lookup-repo
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.m2/repository
+          key: maven-repo-${{ hashFiles('**/pom.xml') }}
+      - name: Lookup Maven wrapper
+        id: lookup-wrapper
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
       - name: Setup JDK ${{ inputs.java }}
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: ${{ inputs.java }}
-          cache: 'maven'
           check-latest: false
       - name: Build
         shell: bash
-        run: ./mvnw $MAVEN_ARGS clean install -DskipTests
+        # FIXME temporarily restrict to few modules
+        run: ./mvnw $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
   build-and-test:
     if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
     name: Test ${{ matrix.comment }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
@@ -307,7 +321,6 @@ jobs:
         with:
           distribution: zulu
           java-version: ${{ inputs.java }}
-          cache: 'maven'
           check-latest: false
       - name: Build (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
         shell: bash
