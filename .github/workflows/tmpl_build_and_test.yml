@@ -181,7 +181,8 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          export MAVEN_USER_HOME="$HOME"
+          set -x
+          export MAVEN_USER_HOME="$HOME/.m2"
           export MAVEN_ARGS="$MAVEN_ARGS -Duser.home=$HOME"
           ./mvnw --show-version $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
       - name: Debug HOME
