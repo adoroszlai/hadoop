@@ -1,0 +1,95 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: Maven Cache Refresh
+
+# Security: write privileges are safe since this is triggered
+# only by `push` or `workflow_dispatch` (both imply user has write access).
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - '**/pom.xml'
+      - '.github/workflows/maven_cache_refresh.yml'
+      - '.mvn/wrapper/maven-wrapper.properties'
+  workflow_dispatch:
+
+permissions: { }
+
+concurrency:
+  group: maven-cache-refresh-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  MAVEN_ARGS: --batch-mode --show-version
+  MVNW_VERBOSE: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 17
+          check-latest: false
+
+      - name: Lookup Maven repository
+        id: lookup-repo
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.m2/repository
+          key: maven-repo-${{ hashFiles('**/pom.xml') }}
+
+      - name: Lookup Maven wrapper
+        id: lookup-wrapper
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
+
+      - name: Fetch plugin dependencies
+        if: steps.lookup-repo.outputs.cache-hit != 'true' || steps.lookup-wrapper.outputs.cache-hit != 'true'
+        run: |
+          # fetch plugins, even if not part of normal build
+          # FIXME temporarily disable plugins
+          # ./mvnw dependency:resolve-plugins help:help
+          # build
+          # FIXME temporarily restrict to few modules
+          ./mvnw -DskipShade -Dtest=void --fail-never verify -am -pl :hadoop-project
+
+      - name: Save Maven wrapper
+        if: steps.lookup-wrapper.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.m2/wrapper
+          key: ${{ steps.lookup-wrapper.outputs.cache-primary-key }}
+
+      - name: Save Maven repository
+        if: steps.lookup-repo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ steps.lookup-repo.outputs.cache-primary-key }}
