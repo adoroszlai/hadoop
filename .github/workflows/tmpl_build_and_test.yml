@@ -170,21 +170,19 @@ jobs:
     container:
       image: ${{ needs.precondition.outputs.build_image_url }}
       options: --user ${{ needs.build-image.outputs.uid }}
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Lookup Maven repository
         id: lookup-repo
-        uses: actions/cache/restore@v6
+        uses: apache/infrastructure-actions/stash/restore@restore/v1
         with:
           path: ${{ env.MAVEN_USER_HOME }}/repository
           key: maven-repo-${{ hashFiles('**/pom.xml') }}
       - name: Lookup Maven wrapper
         id: lookup-wrapper
-        uses: actions/cache/restore@v6
+        uses: apache/infrastructure-actions/stash/restore@restore/v1
         with:
           path: ${{ env.MAVEN_USER_HOME }}/wrapper
           key: maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}

@@ -61,22 +61,29 @@ jobs:
           check-latest: false
           settings-path: ${{ env.MAVEN_USER_HOME }}
 
+      - name: Calculate cache key
+        id: key
+        run: |
+          set -x
+          echo "repo=maven-repo-${{ hashFiles('**/pom.xml') }}" >> $GITHUB_OUTPUT
+          echo "wrapper=maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}" >> $GITHUB_OUTPUT
+
       - name: Lookup Maven repository
         id: lookup-repo
-        uses: actions/cache/restore@v6
+        uses: apache/infrastructure-actions/stash/restore@restore/v1
         with:
           path: ${{ env.MAVEN_USER_HOME }}/repository
-          key: maven-repo-${{ hashFiles('**/pom.xml') }}
+          key: ${{ steps.key.outputs.repo }}
 
       - name: Lookup Maven wrapper
         id: lookup-wrapper
-        uses: actions/cache/restore@v6
+        uses: apache/infrastructure-actions/stash/restore@restore/v1
         with:
           path: ${{ env.MAVEN_USER_HOME }}/wrapper
-          key: maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
+          key: ${{ steps.key.outputs.wrapper }}
 
       - name: Fetch plugin dependencies
-        if: steps.lookup-repo.outputs.cache-hit != 'true' || steps.lookup-wrapper.outputs.cache-hit != 'true'
+        if: steps.lookup-repo.outputs.stash-hit != 'true' || steps.lookup-wrapper.outputs.stash-hit != 'true'
         run: |
           # fetch plugins, even if not part of normal build
           # FIXME temporarily disable plugins
@@ -86,15 +93,17 @@ jobs:
           ./mvnw -DskipShade -Dtest=void --fail-never verify -am -pl :hadoop-project
 
       - name: Save Maven wrapper
-        if: steps.lookup-wrapper.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        if: steps.lookup-wrapper.outputs.stash-hit != 'true'
+        uses: apache/infrastructure-actions/stash/save@save/v1
         with:
           path: ${{ env.MAVEN_USER_HOME }}/wrapper
-          key: ${{ steps.lookup-wrapper.outputs.cache-primary-key }}
+          key: ${{ steps.key.outputs.wrapper }}
+          retention-days: 90
 
       - name: Save Maven repository
-        if: steps.lookup-repo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        if: steps.lookup-repo.outputs.stash-hit != 'true'
+        uses: apache/infrastructure-actions/stash/save@save/v1
         with:
           path: ${{ env.MAVEN_USER_HOME }}/repository
-          key: ${{ steps.lookup-repo.outputs.cache-primary-key }}
+          key: ${{ steps.key.outputs.repo }}
+          retention-days: 90
