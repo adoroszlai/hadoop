@@ -180,7 +180,8 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          export MAVEN_USER_HOME=$HOME
+          export MAVEN_USER_HOME="$HOME"
+          export MAVEN_ARGS="$MAVEN_ARGS -Duser.home=$HOME"
           ./mvnw --show-version $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
       - name: Debug HOME
         shell: bash
