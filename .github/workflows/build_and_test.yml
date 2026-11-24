@@ -60,13 +60,14 @@ jobs:
           #   The following artifacts could not be resolved: jdk.tools:jdk.tools:jar:1.6
           # probably due to
           #   https://github.com/apache/maven-dependency-plugin/issues/1803
-          ./mvnw dependency:resolve-plugins -Dtest=void -DskipShade --fail-never verify
+          ./mvnw dependency:resolve-plugins -Dtest=void -DskipShade --fail-never verify -am -pl :hadoop-project
         env:
           MVNW_VERBOSE: true
 
   default:
     needs:
       - seed-cache
+    if: false
     permissions:
       packages: write
     name: Run

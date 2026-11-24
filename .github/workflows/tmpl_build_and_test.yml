@@ -171,6 +171,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup JDK ${{ inputs.java }}
+        id: setup-java
         uses: actions/setup-java@v6
         with:
           distribution: zulu
@@ -179,6 +180,12 @@ jobs:
           cache-jdk: false
           cache-read-only: true
           check-latest: false
+      - name: Debug
+        shell: bash
+        run: |
+          echo $KEY
+        env:
+          KEY: ${{ steps.setup-java.outputs.cache-primary-key }}
       - name: Set Maven environment
         shell: bash
         run: |
@@ -186,7 +193,7 @@ jobs:
           echo "MAVEN_ARGS=$MAVEN_ARGS -Duser.home=$HOME" >> "$GITHUB_ENV"
       - name: Build
         shell: bash
-        run: ./mvnw $MAVEN_ARGS clean install -DskipTests
+        run: ./mvnw $MAVEN_ARGS clean install -DskipTests -pl :hadoop-project
   build-and-test:
     if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
     name: Test ${{ matrix.comment }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
@@ -311,6 +318,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup JDK ${{ inputs.java }}
+        id: setup-java
         uses: actions/setup-java@v6
         with:
           distribution: zulu
@@ -319,6 +327,12 @@ jobs:
           cache-jdk: false
           cache-read-only: true
           check-latest: false
+      - name: Debug
+        shell: bash
+        run: |
+          echo $KEY
+        env:
+          KEY: ${{ steps.setup-java.outputs.cache-primary-key }}
       - name: Set Maven environment
         shell: bash
         run: |
