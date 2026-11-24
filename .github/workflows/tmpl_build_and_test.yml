@@ -133,7 +133,8 @@ jobs:
           file: ./dev-support/docker/Dockerfile_${{ inputs.os }}
           push: true
           tags: ${{ needs.precondition.outputs.build_image_url }}-base
-          cache-from: type=registry,ref=ghcr.io/apache/hadoop/gha-build-${{ inputs.os }}-image-cache:${{ inputs.branch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
       - name: User-specific Dockerfile
         run: |
           USER_ID=$(id -u "${USER}")
@@ -176,9 +177,33 @@ jobs:
           java-version: ${{ inputs.java }}
           cache: 'maven'
           check-latest: false
+      - name: Debug ${{ env.HOME }}
+        shell: bash
+        run: |
+          set +e
+          find $HOME/.m2 | sort
+          exit 0
+      - name: Debug /home/runner
+        shell: bash
+        run: |
+          set +e
+          find /home/runner/.m2 | sort
+          exit 0
       - name: Build
         shell: bash
-        run: ./mvnw $MAVEN_ARGS clean install -DskipTests
+        run: ./mvnw -V $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
+      - name: Debug ${{ env.HOME }}
+        shell: bash
+        run: |
+          set +e
+          find $HOME/.m2 | sort
+          exit 0
+      - name: Debug /home/runner
+        shell: bash
+        run: |
+          set +e
+          find /home/runner/.m2 | sort
+          exit 0
   build-and-test:
     if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
     name: Test ${{ matrix.comment }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
