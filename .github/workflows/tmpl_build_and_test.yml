@@ -178,12 +178,16 @@ jobs:
           java-version: ${{ inputs.java }}
           cache: 'maven'
           check-latest: false
+      - name: Set Maven environment
+        shell: bash
+        run: |
+          set -x
+          echo "MAVEN_USER_HOME=$HOME/.m2" >> "$GITHUB_ENV"
+          echo "MAVEN_ARGS=$MAVEN_ARGS -Duser.home=$HOME" >> "$GITHUB_ENV"
       - name: Build
         shell: bash
         run: |
           set -x
-          export MAVEN_USER_HOME="$HOME/.m2"
-          export MAVEN_ARGS="$MAVEN_ARGS -Duser.home=$HOME"
           ./mvnw --show-version $MAVEN_ARGS clean install -DskipTests -am -pl :hadoop-project
       - name: Debug HOME
         shell: bash
