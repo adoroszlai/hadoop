@@ -1,0 +1,78 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This workflow creates cache of Maven dependencies, if needed, from scratch.
+
+name: populate-cache
+
+on:
+  push:
+    branches:
+      - trunk
+    paths:
+      - '**/pom.xml'
+      - 'dev-support/bin/populate-cache.sh'
+      - '.github/actions/setup-java-with-cache/action.yml'
+      - '.github/workflows/populate-cache.yml'
+      - '.mvn/wrapper/maven-wrapper.properties'
+  workflow_call:
+  workflow_dispatch:
+
+permissions: { }
+
+concurrency:
+  group: cache-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: 17
+  MAVEN_ARGS: --batch-mode --settings ${{ github.workspace }}/.github/maven-settings.xml --show-version
+  MAVEN_OPTS: -Daether.connector.http.connectionMaxTtl=25 -Daether.connector.http.retryHandler.count=5 -Daether.connector.http.retryHandler.intervalMax=30000
+  MVNW_VERBOSE: true
+
+jobs:
+  cache:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Java
+        id: restore-cache
+        uses: $/.github/actions/setup-java-with-cache
+        with:
+          only-exact-hit: true
+
+      - name: Fetch dependencies
+        if: steps.restore-cache.outputs.cache-hit != 'true'
+        run: |
+          dev-support/bin/populate-cache.sh
+
+      - name: Delete own jars from repo
+        if: steps.restore-cache.outputs.cache-hit != 'true'
+        run: rm -fr ~/.m2/repository/org/apache/hadoop
+
+      - name: Save cache for Maven dependencies
+        if: steps.restore-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ steps.restore-cache.outputs.cache-key }}
+
+      - name: List repo contents
+        if: always()
+        run: find ~/.m2 -type f | sort | xargs ls -lh
