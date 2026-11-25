@@ -62,7 +62,6 @@ env:
   OS: ${{ inputs.os }}
   # Java version for seeding the cache
   JAVA_VERSION: 17
-  # FIXME testing
   MAVEN_ARGS:
     --batch-mode
     -Pyarn-ui
@@ -73,6 +72,8 @@ env:
     -Drequire.snappy
     -Drequire.valgrind
     -Dmaven.test.failure.ignore=false
+    --settings ${{ github.workspace }}/.github/maven-settings.xml
+    --show-version
     -Dsurefire.rerunFailingTestsCount=2
   DOCKER_WORKSPACE: /home/runner/workspace
 
@@ -196,14 +197,14 @@ jobs:
           IMAGE: ${{ needs.precondition.outputs.build_image_url }}
           UID: ${{ needs.build-image.outputs.uid }}
       - name: Store own jars for tests
-        if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
+        if: contains(fromJSON(inputs.jobs), 'build-and-test')
         uses: actions/upload-artifact@v7
         with:
           name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
           path: ~/.m2/repository/org/apache/hadoop
           retention-days: 5
   test:
-    if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
+    if: contains(fromJSON(inputs.jobs), 'build-and-test')
     name: Test ${{ matrix.module }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
     needs:
