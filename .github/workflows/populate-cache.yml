@@ -63,9 +63,12 @@ jobs:
         run: |
           dev-support/bin/populate-cache.sh
 
-      - name: Delete own jars from repo
+      - name: Delete own jars from repo (except thirdparty)
         if: steps.restore-cache.outputs.cache-hit != 'true'
-        run: rm -fr ~/.m2/repository/org/apache/hadoop
+        run: |
+          mv -v ~/.m2/repository/org/apache/hadoop/thirdparty ./
+          rm -fr ~/.m2/repository/org/apache/hadoop/*
+          mv -v thirdparty ~/.m2/repository/org/apache/hadoop/
 
       - name: Save cache for Maven dependencies
         if: steps.restore-cache.outputs.cache-hit != 'true'
