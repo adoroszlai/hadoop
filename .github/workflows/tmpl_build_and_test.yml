@@ -196,6 +196,7 @@ jobs:
           IMAGE: ${{ needs.precondition.outputs.build_image_url }}
           UID: ${{ needs.build-image.outputs.uid }}
       - name: Store own jars for tests
+        if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
         uses: actions/upload-artifact@v7
         with:
           name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
