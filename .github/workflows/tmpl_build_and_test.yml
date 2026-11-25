@@ -62,6 +62,7 @@ env:
   OS: ${{ inputs.os }}
   # Java version for seeding the cache
   JAVA_VERSION: 17
+  DOCKER_WORKSPACE: /home/runner/workspace
   MAVEN_ARGS:
     --batch-mode
     -Pyarn-ui
@@ -72,10 +73,9 @@ env:
     -Drequire.snappy
     -Drequire.valgrind
     -Dmaven.test.failure.ignore=false
-    --settings ${{ github.workspace }}/.github/maven-settings.xml
+    --settings /home/runner/workspace/.github/maven-settings.xml
     --show-version
     -Dsurefire.rerunFailingTestsCount=2
-  DOCKER_WORKSPACE: /home/runner/workspace
 
 jobs:
   # TODO: use common composite actions in .github/actions/
