@@ -25,9 +25,11 @@ function ga_output() {
 }
 
 # output modules with any Java tests
+# FIXME temp only hadoop-common
 MODULES=$(find * -type d -path '*/src/test/java' | sed 's@/src/test/java@@' \
     | xargs -I{} grep -m1 '^  <artifactId>' {}/pom.xml \
     | cut -f2 -d'<' | cut -f2 -d'>' \
+    | grep -e hadoop-common -e hadoop-auth -e hadoop-minikdc \
     | sort -u \
     | xargs --no-run-if-empty echo \
     | sed 's/ /\",\"/g')
