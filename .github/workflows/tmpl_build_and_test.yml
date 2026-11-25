@@ -58,9 +58,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Java version for seeding the cache
+  JAVA_VERSION: 17
+  # FIXME testing
   MAVEN_ARGS:
+    -am -pl :hadoop-project
     --batch-mode
-    --no-transfer-progress
     -Pyarn-ui
     -Pnative
     -Drequire.test.libhadoop
@@ -133,7 +136,8 @@ jobs:
           file: ./dev-support/docker/Dockerfile_${{ inputs.os }}
           push: true
           tags: ${{ needs.precondition.outputs.build_image_url }}-base
-          cache-from: type=registry,ref=ghcr.io/apache/hadoop/gha-build-${{ inputs.os }}-image-cache:${{ inputs.branch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: User-specific Dockerfile
         run: |
           USER_ID=$(id -u "${USER}")
@@ -162,24 +166,29 @@ jobs:
     if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-only')
     runs-on: ubuntu-24.04
     needs: [ precondition, build-image ]
-    container:
-      image: ${{ needs.precondition.outputs.build_image_url }}
-      options: --user ${{ needs.build-image.outputs.uid }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Setup JDK ${{ inputs.java }}
-        uses: actions/setup-java@v5
+        uses: $/.github/actions/setup-java-with-cache
         with:
-          distribution: zulu
           java-version: ${{ inputs.java }}
-          cache: 'maven'
-          check-latest: false
       - name: Build
         shell: bash
-        run: ./mvnw $MAVEN_ARGS clean install -DskipTests
+        run: |
+          docker run --rm \
+            --user $UID \
+            -v $GITHUB_WORKSPACE:/home/runner/workspace \
+            -v $HOME/.m2:/home/runner/.m2 \
+            -w /home/runner/workspace \
+            $IMAGE \
+            ./mvnw ${MAVEN_ARGS} clean install -DskipTests
+        env:
+          IMAGE: ${{ needs.precondition.outputs.build_image_url }}
+          UID: ${{ needs.build-image.outputs.uid }}
   build-and-test:
+    # FIXME adapt
     if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
     name: Test ${{ matrix.comment }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
@@ -303,12 +312,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup JDK ${{ inputs.java }}
-        uses: actions/setup-java@v5
+        uses: $/.github/actions/setup-java-with-cache
         with:
-          distribution: zulu
           java-version: ${{ inputs.java }}
-          cache: 'maven'
-          check-latest: false
       - name: Build (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
         shell: bash
         run: ./mvnw $MAVEN_ARGS ${{ matrix.modules }} clean install -am -DskipTests

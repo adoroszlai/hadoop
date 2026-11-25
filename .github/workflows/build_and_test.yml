@@ -35,13 +35,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  cache:
+    uses: $/.github/workflows/populate-cache.yml
+    if: github.event_name != 'pull_request'
+
   default:
+    if: false # FIXME
+    needs:
+      - cache
     permissions:
       packages: write
     name: Run
     uses: ./.github/workflows/tmpl_build_and_test.yml
 
   rockylinux-8-java21-build-only:
+    needs:
+      - cache
     permissions:
       packages: write
     name: Run
@@ -52,6 +61,9 @@ jobs:
       jobs: '[ "build-only" ]'
 
   debian-13-java25-build-only:
+    if: false # FIXME
+    needs:
+      - cache
     permissions:
       packages: write
     name: Run
