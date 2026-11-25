@@ -79,9 +79,7 @@ env:
   MVNW_VERBOSE: true
 
 jobs:
-  # TODO: use common composite actions in .github/actions/
   precondition:
-    name: Preparation
     runs-on: ubuntu-24.04
     outputs:
       build_image_url: ${{ steps.variables.outputs.build_image_url }}
@@ -96,7 +94,6 @@ jobs:
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "build_image_url=ghcr.io/${REPO_OWNER}/gha-build-${OS}:${BRANCH}-${{ github.run_id }}" >> $GITHUB_OUTPUT
   build-image:
-    name: Build Image ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
     needs:
       - precondition
@@ -169,7 +166,6 @@ jobs:
         run: |
           echo "uid=$(id -u "${USER}")" >> $GITHUB_OUTPUT
   build:
-    name: Build (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
     needs:
       - precondition
@@ -212,7 +208,6 @@ jobs:
           bash dev-support/bin/junit_modules.sh
   test:
     if: contains(fromJSON(inputs.jobs), 'build-and-test')
-    name: Test ${{ matrix.module }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
     needs:
       - precondition
