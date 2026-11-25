@@ -58,9 +58,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  BRANCH: ${{ inputs.branch }}
+  OS: ${{ inputs.os }}
+  # Java version for seeding the cache
+  JAVA_VERSION: 17
+  DOCKER_WORKSPACE: /home/runner/workspace
   MAVEN_ARGS:
     --batch-mode
-    --no-transfer-progress
     -Pyarn-ui
     -Pnative
     -Drequire.test.libhadoop
@@ -69,7 +73,10 @@ env:
     -Drequire.snappy
     -Drequire.valgrind
     -Dmaven.test.failure.ignore=false
+    --settings /home/runner/workspace/.github/maven-settings.xml
+    --show-version
     -Dsurefire.rerunFailingTestsCount=2
+  MVNW_VERBOSE: true
 
 jobs:
   # TODO: use common composite actions in .github/actions/
@@ -87,11 +94,12 @@ jobs:
         run: |
           # Convert to lowercase to meet Docker repo name requirement
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "build_image_url=ghcr.io/${REPO_OWNER}/gha-build-${{ inputs.os }}:${{ inputs.branch }}-${{ github.run_id }}" >> $GITHUB_OUTPUT
+          echo "build_image_url=ghcr.io/${REPO_OWNER}/gha-build-${OS}:${BRANCH}-${{ github.run_id }}" >> $GITHUB_OUTPUT
   build-image:
     name: Build Image ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
-    needs: [ precondition ]
+    needs:
+      - precondition
     # Security: this does not leak write access for our image repository to
     # forked repos.
     #
@@ -117,6 +125,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to GitHub Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
@@ -139,12 +148,14 @@ jobs:
           USER_ID=$(id -u "${USER}")
           GROUP_ID=$(id -g "${USER}")
           cat > /tmp/Dockerfile.gha <<UserSpecificDocker
-          FROM ${{ needs.precondition.outputs.build_image_url }}-base
+          FROM ${IMAGE_URL}-base
           RUN rm -f /var/log/faillog /var/log/lastlog
           RUN groupadd --non-unique -g ${GROUP_ID} ${USER}
           RUN useradd -g ${GROUP_ID} -u ${USER_ID} -k /root -m ${USER}
           RUN echo "${USER} ALL=NOPASSWD: ALL" > "/etc/sudoers.d/hadoop-build-${USER_ID}"
           UserSpecificDocker
+        env:
+          IMAGE_URL: ${{ needs.precondition.outputs.build_image_url }}
       - name: Build and push ${{ inputs.os }} build image for ${{ inputs.branch }}
         id: docker_build_gha
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -157,169 +168,106 @@ jobs:
         id: variables
         run: |
           echo "uid=$(id -u "${USER}")" >> $GITHUB_OUTPUT
-  build-only:
-    name: Build Only (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
-    if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-only')
+  build:
+    name: Build (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
-    needs: [ precondition, build-image ]
-    container:
-      image: ${{ needs.precondition.outputs.build_image_url }}
-      options: --user ${{ needs.build-image.outputs.uid }}
+    needs:
+      - precondition
+      - build-image
+    outputs:
+      junit-modules: ${{ steps.junit-modules.outputs.modules }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup JDK ${{ inputs.java }}
-        uses: actions/setup-java@v5
+        uses: $/.github/actions/setup-java-with-cache
         with:
-          distribution: zulu
           java-version: ${{ inputs.java }}
-          cache: 'maven'
-          check-latest: false
       - name: Build
         shell: bash
-        run: ./mvnw $MAVEN_ARGS clean install -DskipTests
-  build-and-test:
-    if: (!cancelled()) && contains(fromJSON(inputs.jobs), 'build-and-test')
-    name: Test ${{ matrix.comment }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
+        run: |
+          docker run --rm \
+            -e MVNW_VERBOSE \
+            --user $UID \
+            -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
+            -v $HOME/.m2:/home/runner/.m2 \
+            -w $DOCKER_WORKSPACE \
+            $IMAGE \
+            ./mvnw $MAVEN_ARGS clean install -DskipTests
+        env:
+          IMAGE: ${{ needs.precondition.outputs.build_image_url }}
+          UID: ${{ needs.build-image.outputs.uid }}
+      - name: Store own jars for tests
+        if: contains(fromJSON(inputs.jobs), 'build-and-test')
+        uses: actions/upload-artifact@v7
+        with:
+          name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
+          path: ~/.m2/repository/org/apache/hadoop
+          retention-days: 5
+      - name: Find tests
+        id: junit-modules
+        run: |
+          bash dev-support/bin/junit_modules.sh
+  test:
+    if: contains(fromJSON(inputs.jobs), 'build-and-test')
+    name: Test ${{ matrix.module }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
     runs-on: ubuntu-24.04
-    needs: [ precondition, build-image ]
-    container:
-      image: ${{ needs.precondition.outputs.build_image_url }}
-      options: --user ${{ needs.build-image.outputs.uid }}
+    needs:
+      - precondition
+      - build-image
+      - build
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 12
       matrix:
+        module: ${{ fromJson(needs.build.outputs.junit-modules) }}
+        exclude:
+          - module: hadoop-yarn-applications-catalog-webapp
+          - module: hadoop-hdfs
         include:
-          - comment: hdfs - slow
-            modules:
-              -pl :hadoop-hdfs
-              -Dgroups=slow
-          - comment: hdfs - other
-            modules:
-              -pl :hadoop-hdfs
-              -DexcludedGroups=slow
-          - comment: yarn-server-rm
-            modules:
-              -pl :hadoop-yarn-server-resourcemanager
-          - comment: mr
-            modules:
-              -pl :hadoop-mapreduce-client-core
-              -pl :hadoop-mapreduce-client-common
-              -pl :hadoop-mapreduce-client-shuffle
-              -pl :hadoop-mapreduce-client-jobclient
-              -pl :hadoop-mapreduce-client-app
-              -pl :hadoop-mapreduce-client-hs
-              -pl :hadoop-mapreduce-client-hs-plugins
-              -pl :hadoop-mapreduce-client-nativetask
-              -pl :hadoop-mapreduce-client-uploader
-              -pl :hadoop-mapreduce-examples
-          - comment: common
-            modules:
-              -pl :hadoop-common
-              -pl :hadoop-yarn-server-nodemanager
-              -pl :hadoop-yarn-client
-              -pl :hadoop-distcp
-          - comment: hdfs-rbf
-            modules:
-              -pl :hadoop-hdfs-rbf
-              -pl :hadoop-yarn-applications-distributedshell
-              -pl :hadoop-yarn-services-core
-          - comment: other
-            modules:
-              -pl :hadoop-minikdc
-              -pl :hadoop-auth
-              -pl :hadoop-auth-examples
-              -pl :hadoop-nfs
-              -pl :hadoop-kms
-              -pl :hadoop-registry
-              -pl :hadoop-hdfs-client
-              -pl :hadoop-hdfs-native-client
-              -pl :hadoop-hdfs-httpfs
-              -pl :hadoop-hdfs-nfs
-              -pl :hadoop-yarn-api
-              -pl :hadoop-yarn-common
-              -pl :hadoop-yarn-server-common
-              -pl :hadoop-yarn-server-applicationhistoryservice
-              -pl :hadoop-yarn-server-timelineservice
-              -pl :hadoop-yarn-server-web-proxy
-              -pl :hadoop-yarn-server-tests
-              -pl :hadoop-yarn-server-sharedcachemanager
-              -pl :hadoop-yarn-server-timeline-pluginstorage
-              -pl :hadoop-yarn-server-timelineservice-hbase-common
-              -pl :hadoop-yarn-server-timelineservice-hbase-client
-              -pl :hadoop-yarn-server-timelineservice-hbase-server-2
-              -pl :hadoop-yarn-server-timelineservice-hbase-tests
-              -pl :hadoop-yarn-server-router
-              -pl :hadoop-yarn-server-timelineservice-documentstore
-              -pl :hadoop-yarn-server-globalpolicygenerator
-              -pl :hadoop-yarn-applications-unmanaged-am-launcher
-              -pl :hadoop-yarn-services-api
-              -pl :hadoop-yarn-registry
-              -pl org.apache.hadoop.applications.mawo:hadoop-yarn-applications-mawo-core
-              -pl :hadoop-yarn-csi
-              -pl :hadoop-minicluster
-              -pl :hadoop-federation-balance
-              -pl :hadoop-streaming
-              -pl :hadoop-client
-              -pl :hadoop-dynamometer-workload
-              -pl :hadoop-dynamometer-infra
-              -pl :hadoop-dynamometer-blockgen
-              -pl :hadoop-dynamometer-dist
-              -pl :hadoop-archives
-              -pl :hadoop-archive-logs
-              -pl :hadoop-rumen
-              -pl :hadoop-gridmix
-              -pl :hadoop-datajoin
-              -pl :hadoop-extras
-              -pl :hadoop-aws
-              -pl :hadoop-kafka
-              -pl :hadoop-aliyun
-              -pl :hadoop-sls
-              -pl :hadoop-resourceestimator
-              -pl :hadoop-azure
-              -pl :hadoop-azure-datalake
-              -pl :hadoop-fs2img
-              -pl :hadoop-tools-dist
-              -pl :hadoop-benchmark
-              -pl :hadoop-compat-bench
-              -pl :hadoop-client-api
-              -pl :hadoop-client-runtime
-              -pl :hadoop-client-minicluster
-              -pl :hadoop-client-integration-tests
-              -pl :hadoop-cos
-              -pl :hadoop-tos
-              -pl :hadoop-huaweicloud
-              -pl :hadoop-cloud-storage
-              -pl :hadoop-bos
-              -pl :hadoop-dist
-          # skipped modules
-          # -pl :hadoop-yarn-applications-catalog-webapp
+          - module: hadoop-hdfs
+            opt: -Dgroups=slow
+          - module: hadoop-hdfs
+            opt: -DexcludedGroups=slow
     steps:
       - name: Checkout Hadoop repository
         uses: actions/checkout@v6
         # In order to fetch changed files
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup JDK ${{ inputs.java }}
-        uses: actions/setup-java@v5
+        uses: $/.github/actions/setup-java-with-cache
         with:
-          distribution: zulu
           java-version: ${{ inputs.java }}
-          cache: 'maven'
-          check-latest: false
-      - name: Build (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
-        shell: bash
-        run: ./mvnw $MAVEN_ARGS ${{ matrix.modules }} clean install -am -DskipTests
+      - name: Restore own jars
+        uses: actions/download-artifact@v8
+        with:
+          name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
+          path: ~/.m2/repository/org/apache/hadoop
       - name: Test (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
         shell: bash
-        run: ./mvnw $MAVEN_ARGS ${{ matrix.modules }} test -Dsurefire.excludesFile=$PWD/.github/gha-tests/exclude-tests.txt
+        run: |
+          docker run --rm \
+            -e MVNW_VERBOSE \
+            --user $UID \
+            -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
+            -v $HOME/.m2:/home/runner/.m2 \
+            -w $DOCKER_WORKSPACE \
+            $IMAGE \
+            ./mvnw $MAVEN_ARGS -pl :$MODULE $OPT test -Dsurefire.excludesFile=$DOCKER_WORKSPACE/.github/gha-tests/exclude-tests.txt
+        env:
+          IMAGE: ${{ needs.precondition.outputs.build_image_url }}
+          MODULE: ${{ matrix.module }}
+          OPT: ${{ matrix.opt }}
+          UID: ${{ needs.build-image.outputs.uid }}
       - name: Upload test logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: unit-test-logs-${{ matrix.comment }}-java${{ inputs.java }})-${{ inputs.os }}-${{ inputs.branch }}
+          name: unit-test-logs-${{ matrix.module }}-java${{ inputs.java }})-${{ inputs.os }}-${{ inputs.branch }}
           path: |
             **/target/**/*.log
             **/target/surefire-reports/**
