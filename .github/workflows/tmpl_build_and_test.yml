@@ -222,6 +222,14 @@ jobs:
       max-parallel: 8
       matrix:
         module: ${{ fromJson(needs.build.outputs.junit-modules) }}
+        exclude:
+          - module: hadoop-yarn-applications-catalog-webapp
+          - module: hadoop-hdfs
+        include:
+          - module: hadoop-hdfs
+            opt: -Dgroups=slow
+          - module: hadoop-hdfs
+            opt: -DexcludedGroups=slow
     steps:
       - name: Checkout Hadoop repository
         uses: actions/checkout@v6
@@ -247,11 +255,12 @@ jobs:
             -v $HOME/.m2:/home/runner/.m2 \
             -w $DOCKER_WORKSPACE \
             $IMAGE \
-            ./mvnw ${MAVEN_ARGS} -pl :$MODULE test -Dsurefire.excludesFile=$DOCKER_WORKSPACE/.github/gha-tests/exclude-tests.txt
+            ./mvnw ${MAVEN_ARGS} -pl :$MODULE $OPT test -Dsurefire.excludesFile=$DOCKER_WORKSPACE/.github/gha-tests/exclude-tests.txt
         env:
           IMAGE: ${{ needs.precondition.outputs.build_image_url }}
           UID: ${{ needs.build-image.outputs.uid }}
           MODULE: ${{ matrix.module }}
+          OPT: ${{ matrix.opt }}
       - name: Upload test logs
         if: failure()
         uses: actions/upload-artifact@v7
