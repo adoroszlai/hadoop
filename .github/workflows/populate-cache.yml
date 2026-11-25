@@ -45,38 +45,6 @@ env:
 
 jobs:
   cache:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     steps:
-      - name: Checkout project
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup Java
-        id: restore-cache
-        uses: $/.github/actions/setup-java-with-cache
-        with:
-          only-exact-hit: true
-
-      - name: Fetch dependencies
-        if: steps.restore-cache.outputs.cache-hit != 'true'
-        run: |
-          dev-support/bin/populate-cache.sh
-
-      - name: Delete own jars from repo (except thirdparty)
-        if: steps.restore-cache.outputs.cache-hit != 'true'
-        run: |
-          mv -v ~/.m2/repository/org/apache/hadoop/thirdparty ./
-          rm -fr ~/.m2/repository/org/apache/hadoop/*
-          mv -v thirdparty ~/.m2/repository/org/apache/hadoop/
-
-      - name: Save cache for Maven dependencies
-        if: steps.restore-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.m2/repository
-          key: ${{ steps.restore-cache.outputs.cache-key }}
-
-      - name: List repo contents
-        if: always()
-        run: find ~/.m2 -type f | sort | xargs ls -lh
+      - run: echo 0

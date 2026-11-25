@@ -45,19 +45,22 @@ jobs:
     needs:
       - cache
     if: ${{ !cancelled() }}
-    permissions:
-      packages: write
     uses: $/.github/workflows/tmpl_build_and_test.yml
+    with:
+      java: ${{ matrix.java }}
+      os: ${{ matrix.os }}
+      job: ${{ matrix.job }}
+    name: ${{ matrix.job }} (java${{ matrix.java }}, ${{ matrix.os }})
     strategy:
       fail-fast: false
-      max-parallel: 3
       matrix:
         include:
           - java: 17
             os: ubuntu_24
+            job: test
           - java: 21
             os: rockylinux_8
-            jobs: build-only
+            job: build
           - java: 25
             os: debian_13
-            jobs: build-only
+            job: build

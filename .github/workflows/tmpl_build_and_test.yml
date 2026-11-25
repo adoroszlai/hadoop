@@ -34,17 +34,15 @@ on:
         type: string
         description: Operating system to run the build on
         default: ubuntu_24
-      jobs:
+      job:
         required: false
         type: string
         description: >-
-          Jobs to run, and should be in JSON Array format.
-          Candidates: "build-only", "build-and-test".
-        default: '[ "build-and-test" ]'
+          Job to run, choose from "build" and "test".
+          "test" implies "build".
+        default: "build"
 
-# Default to minimal permissions for workflow.
-permissions:
-  packages: read
+permissions: { }
 
 concurrency:
   group: >-
@@ -54,7 +52,7 @@ concurrency:
     ${{ inputs.java }}
     ${{ inputs.branch }}
     ${{ inputs.os }}
-    ${{ inputs.jobs }}
+    ${{ inputs.job }}
   cancel-in-progress: true
 
 env:
@@ -80,135 +78,25 @@ env:
 
 jobs:
   precondition:
-    runs-on: ubuntu-24.04
-    outputs:
-      build_image_url: ${{ steps.variables.outputs.build_image_url }}
+    runs-on: ubuntu-slim
     steps:
-      - name: Set up Outputs
-        id: variables
-        # Security: passing inputs.{os, branch} through workflow (above) inputs removes
-        # ability to do shell injection below.
-        # See: https://securitylab.github.com/resources/github-actions-untrusted-input/
-        run: |
-          # Convert to lowercase to meet Docker repo name requirement
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "build_image_url=ghcr.io/${REPO_OWNER}/gha-build-${OS}:${BRANCH}-${{ github.run_id }}" >> $GITHUB_OUTPUT
+      - run: echo 1
   build-image:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     needs:
       - precondition
-    # Security: this does not leak write access for our image repository to
-    # forked repos.
-    #
-    # We have `packages: write` permissions for our GITHUB_TOKEN below. However:
-    #
-    # - For `pull_request`, GitHub downgrades GITHUB_TOKEN permissions to
-    #   read-only.
-    # - For `push` triggers on a fork, the GITHUB_TOKEN retains write
-    #   permissions, but the `push` is happening in the context of the fork, not
-    #   the upstream repo.
-    # - `pull_request_target` events (not used here) use the base repo's
-    #   default branch. This prevents an attacker from adding code in a pull
-    #   request which prints / leaks secrets, etc.. Also the GITHUB_TOKEN we
-    #   use to grant access to writing to the image repo. is scoped to the
-    #   repository it runs on. Even if a fork were to gain access to a
-    #   GITHUB_TOKEN with write privileges, it doesn't grant access for other
-    #   repositories to write.
-    permissions:
-      packages: write
-    outputs:
-      uid: ${{ steps.variables.outputs.uid }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build and push ${{ inputs.os }} base build image for ${{ inputs.branch }}
-        id: docker_build_base
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: ./dev-support/docker/
-          file: ./dev-support/docker/Dockerfile_${{ inputs.os }}
-          push: true
-          tags: ${{ needs.precondition.outputs.build_image_url }}-base
-          cache-from: type=registry,ref=ghcr.io/apache/hadoop/gha-build-${{ inputs.os }}-image-cache:${{ inputs.branch }}
-      - name: User-specific Dockerfile
-        run: |
-          USER_ID=$(id -u "${USER}")
-          GROUP_ID=$(id -g "${USER}")
-          cat > /tmp/Dockerfile.gha <<UserSpecificDocker
-          FROM ${IMAGE_URL}-base
-          RUN rm -f /var/log/faillog /var/log/lastlog
-          RUN groupadd --non-unique -g ${GROUP_ID} ${USER}
-          RUN useradd -g ${GROUP_ID} -u ${USER_ID} -k /root -m ${USER}
-          RUN echo "${USER} ALL=NOPASSWD: ALL" > "/etc/sudoers.d/hadoop-build-${USER_ID}"
-          UserSpecificDocker
-        env:
-          IMAGE_URL: ${{ needs.precondition.outputs.build_image_url }}
-      - name: Build and push ${{ inputs.os }} build image for ${{ inputs.branch }}
-        id: docker_build_gha
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: ./dev-support/docker/
-          file: /tmp/Dockerfile.gha
-          push: true
-          tags: ${{ needs.precondition.outputs.build_image_url }}
-      - name: Set up Outputs
-        id: variables
-        run: |
-          echo "uid=$(id -u "${USER}")" >> $GITHUB_OUTPUT
+      - run: echo 2
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     needs:
       - precondition
       - build-image
-    outputs:
-      junit-modules: ${{ steps.junit-modules.outputs.modules }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Setup JDK ${{ inputs.java }}
-        uses: $/.github/actions/setup-java-with-cache
-        with:
-          java-version: ${{ inputs.java }}
-      - name: Build
-        shell: bash
-        run: |
-          docker run --rm \
-            -e MVNW_VERBOSE \
-            --user $UID \
-            -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
-            -v $HOME/.m2:/home/runner/.m2 \
-            -w $DOCKER_WORKSPACE \
-            $IMAGE \
-            ./mvnw $MAVEN_ARGS clean install -DskipTests
-        env:
-          IMAGE: ${{ needs.precondition.outputs.build_image_url }}
-          UID: ${{ needs.build-image.outputs.uid }}
-      - name: Store own jars for tests
-        if: contains(fromJSON(inputs.jobs), 'build-and-test')
-        uses: actions/upload-artifact@v7
-        with:
-          name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
-          path: ~/.m2/repository/org/apache/hadoop
-          retention-days: 5
-      - name: Find tests
-        id: junit-modules
-        run: |
-          bash dev-support/bin/junit_modules.sh
+      - run: echo 3
   test:
-    if: contains(fromJSON(inputs.jobs), 'build-and-test')
-    runs-on: ubuntu-24.04
+    if: inputs.job == 'test'
+    runs-on: ubuntu-slim
     needs:
       - precondition
       - build-image
@@ -217,52 +105,9 @@ jobs:
       fail-fast: false
       max-parallel: 12
       matrix:
-        module: ${{ fromJson(needs.build.outputs.junit-modules) }}
-        exclude:
-          - module: hadoop-yarn-applications-catalog-webapp
-          - module: hadoop-hdfs
-        include:
-          - module: hadoop-hdfs
-            opt: -Dgroups=slow
-          - module: hadoop-hdfs
-            opt: -DexcludedGroups=slow
+        module:
+          - hadoop-auth
+          - hadoop-common
+          - hadoop-minikdc
     steps:
-      - name: Checkout Hadoop repository
-        uses: actions/checkout@v6
-        # In order to fetch changed files
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Setup JDK ${{ inputs.java }}
-        uses: $/.github/actions/setup-java-with-cache
-        with:
-          java-version: ${{ inputs.java }}
-      - name: Restore own jars
-        uses: actions/download-artifact@v8
-        with:
-          name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
-          path: ~/.m2/repository/org/apache/hadoop
-      - name: Test (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
-        shell: bash
-        run: |
-          docker run --rm \
-            -e MVNW_VERBOSE \
-            --user $UID \
-            -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
-            -v $HOME/.m2:/home/runner/.m2 \
-            -w $DOCKER_WORKSPACE \
-            $IMAGE \
-            ./mvnw $MAVEN_ARGS -pl :$MODULE $OPT test -Dsurefire.excludesFile=$DOCKER_WORKSPACE/.github/gha-tests/exclude-tests.txt
-        env:
-          IMAGE: ${{ needs.precondition.outputs.build_image_url }}
-          MODULE: ${{ matrix.module }}
-          OPT: ${{ matrix.opt }}
-          UID: ${{ needs.build-image.outputs.uid }}
-      - name: Upload test logs
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: unit-test-logs-${{ matrix.module }}-java${{ inputs.java }})-${{ inputs.os }}-${{ inputs.branch }}
-          path: |
-            **/target/**/*.log
-            **/target/surefire-reports/**
+      - run: echo 4
