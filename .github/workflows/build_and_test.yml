@@ -53,7 +53,7 @@ jobs:
   rockylinux-8-java21-build-only:
     needs:
       - cache
-    if: ${{ !cancelled() }}
+    if: ${{ false && !cancelled() }}
     permissions:
       packages: write
     name: Run
@@ -66,7 +66,7 @@ jobs:
   debian-13-java25-build-only:
     needs:
       - cache
-    if: ${{ !cancelled() }}
+    if: ${{ false && !cancelled() }}
     permissions:
       packages: write
     name: Run

@@ -63,6 +63,7 @@ env:
   # Java version for seeding the cache
   JAVA_VERSION: 17
   DOCKER_WORKSPACE: /home/runner/workspace
+  # FIXME remove --offline after finding most dependencies missing from cache
   MAVEN_ARGS:
     --batch-mode
     -Pyarn-ui
@@ -73,6 +74,7 @@ env:
     -Drequire.snappy
     -Drequire.valgrind
     -Dmaven.test.failure.ignore=false
+    --offline
     --settings /home/runner/workspace/.github/maven-settings.xml
     --show-version
     -Dsurefire.rerunFailingTestsCount=2
