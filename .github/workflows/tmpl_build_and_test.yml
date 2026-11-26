@@ -35,16 +35,13 @@ on:
         description: Operating system to run the build on
         default: ubuntu_24
       jobs:
-        required: false
+        required: true
         type: string
         description: >-
           Jobs to run, and should be in JSON Array format.
-          Candidates: "build-only", "build-and-test".
-        default: '[ "build-and-test" ]'
+          Candidates are "build-image", "build", "create-cache", "test".
 
-# Default to minimal permissions for workflow.
-permissions:
-  packages: read
+permissions: { }
 
 concurrency:
   group: >-
@@ -60,10 +57,9 @@ concurrency:
 env:
   BRANCH: ${{ inputs.branch }}
   OS: ${{ inputs.os }}
-  # Java version for seeding the cache
-  JAVA_VERSION: 17
+  CREATE_CACHE: ${{ contains(fromJSON(inputs.jobs), 'create-cache') }}
+  RUN_TEST: ${{ contains(fromJSON(inputs.jobs), 'test') }}
   DOCKER_WORKSPACE: /home/runner/workspace
-  # FIXME remove --offline after finding most dependencies missing from cache
   MAVEN_ARGS:
     --batch-mode
     -Pyarn-ui
@@ -74,10 +70,10 @@ env:
     -Drequire.snappy
     -Drequire.valgrind
     -Dmaven.test.failure.ignore=false
-    --offline
     --settings /home/runner/workspace/.github/maven-settings.xml
     --show-version
     -Dsurefire.rerunFailingTestsCount=2
+  MAVEN_OPTS: -Daether.connector.http.connectionMaxTtl=25 -Daether.connector.http.retryHandler.count=5 -Daether.connector.http.retryHandler.intervalMax=30000
   MVNW_VERBOSE: true
 
 jobs:
@@ -85,21 +81,28 @@ jobs:
   precondition:
     name: Preparation
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       build_image_url: ${{ steps.variables.outputs.build_image_url }}
+      uid: ${{ steps.variables.outputs.uid }}
+      gid: ${{ steps.variables.outputs.gid }}
     steps:
       - name: Set up Outputs
         id: variables
-        # Security: passing inputs.{os, branch} through workflow (above) inputs removes
+        # Security: passing inputs.{os, branch} through variables removes
         # ability to do shell injection below.
         # See: https://securitylab.github.com/resources/github-actions-untrusted-input/
         run: |
           # Convert to lowercase to meet Docker repo name requirement
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "build_image_url=ghcr.io/${REPO_OWNER}/gha-build-${OS}:${BRANCH}-${{ github.run_id }}" >> $GITHUB_OUTPUT
+          REPO_OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          set -x
+          echo "build_image_url=ghcr.io/${REPO_OWNER}/gha-build-${OS}:${BRANCH}-${GITHUB_RUN_ID}" >> $GITHUB_OUTPUT
+          echo "uid=$(id -u)" >> $GITHUB_OUTPUT
+          echo "gid=$(id -g)" >> $GITHUB_OUTPUT
   build-image:
-    name: Build Image ${{ inputs.os }}-${{ inputs.branch }}
+    if: ${{ contains(fromJSON(inputs.jobs), 'build-image') }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     needs:
       - precondition
     # Security: this does not leak write access for our image repository to
@@ -121,8 +124,6 @@ jobs:
     #   repositories to write.
     permissions:
       packages: write
-    outputs:
-      uid: ${{ steps.variables.outputs.uid }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -147,8 +148,6 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/apache/hadoop/gha-build-${{ inputs.os }}-image-cache:${{ inputs.branch }}
       - name: User-specific Dockerfile
         run: |
-          USER_ID=$(id -u "${USER}")
-          GROUP_ID=$(id -g "${USER}")
           cat > /tmp/Dockerfile.gha <<UserSpecificDocker
           FROM ${IMAGE_URL}-base
           RUN rm -f /var/log/faillog /var/log/lastlog
@@ -158,6 +157,8 @@ jobs:
           UserSpecificDocker
         env:
           IMAGE_URL: ${{ needs.precondition.outputs.build_image_url }}
+          USER_ID: ${{ needs.precondition.outputs.uid }}
+          GROUP_ID: ${{ needs.precondition.outputs.gid }}
       - name: Build and push ${{ inputs.os }} build image for ${{ inputs.branch }}
         id: docker_build_gha
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -166,13 +167,10 @@ jobs:
           file: /tmp/Dockerfile.gha
           push: true
           tags: ${{ needs.precondition.outputs.build_image_url }}
-      - name: Set up Outputs
-        id: variables
-        run: |
-          echo "uid=$(id -u "${USER}")" >> $GITHUB_OUTPUT
   build:
-    name: Build (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
+    if: ${{ contains(fromJSON(inputs.jobs), 'build') }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     needs:
       - precondition
       - build-image
@@ -184,13 +182,34 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup JDK ${{ inputs.java }}
+        id: restore-cache
         uses: $/.github/actions/setup-java-with-cache
         with:
           java-version: ${{ inputs.java }}
+          only-exact-hit: ${{ env.CREATE_CACHE == 'true' }}
+      - name: Seed cache
+        if: ${{ env.CREATE_CACHE == 'true' && steps.restore-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          docker run --rm \
+            -e GITHUB_ACTIONS \
+            -e MAVEN_OPTS \
+            -e MVNW_VERBOSE \
+            --user $UID \
+            -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
+            -v $HOME/.m2:/home/runner/.m2 \
+            -w $DOCKER_WORKSPACE \
+            $IMAGE \
+            ./mvnw $MAVEN_ARGS dependency:resolve-plugins
+        env:
+          IMAGE: ${{ needs.precondition.outputs.build_image_url }}
+          UID: ${{ needs.precondition.outputs.uid }}
       - name: Build
         shell: bash
         run: |
           docker run --rm \
+            -e GITHUB_ACTIONS \
+            -e MAVEN_OPTS \
             -e MVNW_VERBOSE \
             --user $UID \
             -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
@@ -200,32 +219,46 @@ jobs:
             ./mvnw $MAVEN_ARGS clean install -DskipTests
         env:
           IMAGE: ${{ needs.precondition.outputs.build_image_url }}
-          UID: ${{ needs.build-image.outputs.uid }}
+          UID: ${{ needs.precondition.outputs.uid }}
       - name: Store own jars for tests
-        if: contains(fromJSON(inputs.jobs), 'build-and-test')
+        if: ${{ env.RUN_TEST == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
           path: ~/.m2/repository/org/apache/hadoop
           retention-days: 5
       - name: Store hadoop-common for tests
-        if: contains(fromJSON(inputs.jobs), 'build-and-test')
+        if: ${{ env.RUN_TEST == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: hadoop-common-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
           path: hadoop-common-project/hadoop-common/target
           retention-days: 5
+      - name: Delete own jars from repo (except thirdparty)
+        if: ${{ env.CREATE_CACHE == 'true' && steps.restore-cache.outputs.cache-hit != 'true' }}
+        run: |
+          mv -v ~/.m2/repository/org/apache/hadoop/thirdparty ./
+          rm -fr ~/.m2/repository/org/apache/hadoop/*
+          mv -v thirdparty ~/.m2/repository/org/apache/hadoop/
+      - name: Save cache for Maven dependencies
+        if: ${{ env.CREATE_CACHE == 'true' && steps.restore-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ steps.restore-cache.outputs.cache-key }}
+      - name: List repo contents
+        if: ${{ env.CREATE_CACHE == 'true' && steps.restore-cache.outputs.cache-hit != 'true' }}
+        run: find ~/.m2/{repository,wrapper} -type f | sort | xargs ls -lh
       - name: Find tests
         id: junit-modules
         run: |
           bash dev-support/bin/junit_modules.sh
   test:
-    if: contains(fromJSON(inputs.jobs), 'build-and-test')
-    name: Test ${{ matrix.module }} (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
+    if: ${{ contains(fromJSON(inputs.jobs), 'test') }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 300 # TODO speed up tests or split further to reduce longest matrix runtime
     needs:
       - precondition
-      - build-image
       - build
     strategy:
       fail-fast: false
@@ -264,6 +297,9 @@ jobs:
       - name: Test (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
         shell: bash
         run: |
+          if [[ "$CACHE_HIT" == "true" ]]; then
+            export MAVEN_ARGS="$MAVEN_ARGS --offline"
+          fi
           docker run --rm \
             -e GITHUB_ACTIONS \
             -e MVNW_VERBOSE \
@@ -274,10 +310,11 @@ jobs:
             $IMAGE \
             ./mvnw $MAVEN_ARGS -pl :$MODULE $OPT test -Dsurefire.excludesFile=$DOCKER_WORKSPACE/.github/gha-tests/exclude-tests.txt
         env:
+          CACHE_HIT: ${{ steps.restore-cache.outputs.cache-hit }}
           IMAGE: ${{ needs.precondition.outputs.build_image_url }}
           MODULE: ${{ matrix.module }}
           OPT: ${{ matrix.opt }}
-          UID: ${{ needs.build-image.outputs.uid }}
+          UID: ${{ needs.precondition.outputs.uid }}
       - name: Upload test logs
         if: failure()
         uses: actions/upload-artifact@v7

@@ -38,40 +38,39 @@ permissions: { }
 
 jobs:
   cache:
-    uses: $/.github/workflows/populate-cache.yml
-    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' && github.event_name != 'workflow_run' }}
-
-  default:
-    needs:
-      - cache
-    if: ${{ !cancelled() }}
     permissions:
       packages: write
-    name: Run
-    uses: $/.github/workflows/tmpl_build_and_test.yml
-
-  rockylinux-8-java21-build-only:
-    needs:
-      - cache
-    if: ${{ false && !cancelled() }}
-    permissions:
-      packages: write
-    name: Run
     uses: $/.github/workflows/tmpl_build_and_test.yml
     with:
-      java: 21
-      os: rockylinux_8
-      jobs: '[ "build-only" ]'
+      java: 17
+      os: ubuntu_24
+      jobs: '[ "build-image", "create-cache", "build" ]'
 
-  debian-13-java25-build-only:
+  test:
     needs:
       - cache
-    if: ${{ false && !cancelled() }}
     permissions:
-      packages: write
-    name: Run
+      packages: write # not used for "test"-only, but "workflow is not valid" without this
     uses: $/.github/workflows/tmpl_build_and_test.yml
     with:
-      java: 25
-      os: debian_13
-      jobs: '[ "build-only" ]'
+      java: 17
+      os: ubuntu_24
+      jobs: '[ "test" ]'
+
+  build:
+    needs:
+      - cache
+    permissions:
+      packages: write
+    uses: $/.github/workflows/tmpl_build_and_test.yml
+    with:
+      java: ${{ matrix.java }}
+      os: ${{ matrix.os }}
+      jobs: '[ "build-image", "build" ]'
+    strategy:
+      matrix:
+        include:
+          - java: 21
+            os: rockylinux_8
+          - java: 25
+            os: debian_13
