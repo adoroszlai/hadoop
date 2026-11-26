@@ -39,7 +39,17 @@ concurrency:
 env:
   # Java version for seeding the cache
   JAVA_VERSION: 17
-  MAVEN_ARGS: --batch-mode --settings ${{ github.workspace }}/.github/maven-settings.xml --show-version
+  MAVEN_ARGS:
+    --batch-mode
+    -Pyarn-ui
+    -Pnative
+    -Drequire.test.libhadoop
+    -Drequire.fuse
+    -Drequire.openssl
+    -Drequire.snappy
+    -Drequire.valgrind
+    --settings ${{ github.workspace }}/.github/maven-settings.xml
+    --show-version
   MAVEN_OPTS: -Daether.connector.http.connectionMaxTtl=25 -Daether.connector.http.retryHandler.count=5 -Daether.connector.http.retryHandler.intervalMax=30000
   MVNW_VERBOSE: true
 

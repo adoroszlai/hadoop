@@ -206,6 +206,13 @@ jobs:
           name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
           path: ~/.m2/repository/org/apache/hadoop
           retention-days: 5
+      - name: Store hadoop-common for tests
+        if: contains(fromJSON(inputs.jobs), 'build-and-test')
+        uses: actions/upload-artifact@v7
+        with:
+          name: hadoop-common-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
+          path: hadoop-common-project/hadoop-common/target
+          retention-days: 5
       - name: Find tests
         id: junit-modules
         run: |
@@ -247,6 +254,11 @@ jobs:
         with:
           name: hadoop-repo-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
           path: ~/.m2/repository/org/apache/hadoop
+      - name: Restore hadoop-common
+        uses: actions/download-artifact@v8
+        with:
+          name: hadoop-common-java-${{ inputs.java }}-${{ inputs.os }}-${{ inputs.branch }}
+          path: hadoop-common-project/hadoop-common/target
       - name: Test (Java ${{ inputs.java }}) ${{ inputs.os }}-${{ inputs.branch }}
         shell: bash
         run: |
