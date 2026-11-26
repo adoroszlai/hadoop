@@ -251,6 +251,7 @@ jobs:
         shell: bash
         run: |
           docker run --rm \
+            -e GITHUB_ACTIONS \
             -e MVNW_VERBOSE \
             --user $UID \
             -v $GITHUB_WORKSPACE:$DOCKER_WORKSPACE \
